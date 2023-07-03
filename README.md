@@ -1,5 +1,8 @@
 # litt_disparity
 
+### To Dos:
+- [ ] create figure
+
 Per Aden:
 
 "Hey Andreas,
