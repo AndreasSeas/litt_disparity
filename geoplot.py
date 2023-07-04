@@ -1,19 +1,317 @@
-# -*- coding: utf-8 -*-
 """
-Spyder Editor
+Developer: 
+    Andreas Seas
 
-This is a temporary script file.
-
-conda activate flxsus
+Last Updated:
+    23.07.03
+    
+Environment init:
+    conda activate lit_disparity
+    
 """
+
+# =============================================================================
+# import critical packages
+# =============================================================================
 import pandas as pd
 import pgeocode
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import sys
+import censusdata
+import pingouin as pg
 
-df=pd.read_csv('/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/Manuscript-LITTDisparity/LITT_Zip_Code_Data.csv')
+# =============================================================================
+# functions
+# =============================================================================
+def pullacs5detail(subgroup,year,dataname):
+       
+    data_raw = censusdata.download('acs5', year,
+               censusdata.censusgeo([('zip code tabulation area', '*')]),
+              subgroup)
+    
+    data_raw.head()
+    
+    data = data_raw.copy()
+    data.index = [str(x)[-5:] for x in data.index]
+    data.index.name = 'zcta'
+    data.columns = [dataname]
+
+    return data
+
+def pullacs5DP(subgroup,year,dataname):
+       
+    '''
+    resources:
+        variable descriptions:
+            https://api.census.gov/data/2021/acs/acs5/profile/variables.html
+        corresponding datatable:
+            https://data.census.gov/table?d=ACS+5-Year+Estimates+Data+Profiles&tid=ACSDP5Y2021.DP05
+        general stats handbook:
+            https://www.census.gov/content/dam/Census/library/publications/2018/acs/acs_general_handbook_2018_ch07.pdf
+        based off this example:
+            https://jtleider.github.io/censusdata/example1.html
+    '''
+    
+    # use this one in order to pull more accurate profile data
+    
+    data_raw = censusdata.download('acs5', year,
+               censusdata.censusgeo([('zip code tabulation area', '*')]),
+              subgroup,tabletype='profile')
+    
+    data_raw.head()
+    
+    data = data_raw.copy()
+    data.index = [str(x)[-5:] for x in data.index]
+    data.index.name = 'zcta'
+    data.columns = [dataname]
+
+    return data
+
+# =============================================================================
+# Load patient zipcode data
+# =============================================================================
+
+name_littzipcodes='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/LITT_Zip_Code_Data.csv'
+
+df=pd.read_csv(name_littzipcodes)
+
+# =============================================================================
+# clean patient data and remove pts without clear race/ethnic identity
+# =============================================================================
+# first drop patients with refusal to respond to question of race/ethnicity
+df=df.drop(np.where(df['Race']==6)[0])# 6 is the index used for NR for race
+df=df.drop(np.where(df['Hispanic']==2)[0])# 2 is the index used for NR for ethnicity
+
+# get the unique zipcodes among all patients
+unique_zipcodes=set(df["Zip Code"].unique())
+
+## identify the numer of individuals from each of the two groups identified here
+# first make a dataframe to store the data
+df_zip=pd.DataFrame(data=None,index=unique_zipcodes,
+                    columns=['n_pts','n_white_nonhisp','n_other',
+                             'n_population','pct_minority','zcta','shp'])
+#   n_pts = number of patients from that region
+#   n_white_nonhisp = number of white, non-hispanic individuals in that zipcode
+#   n_other = npts-n_white_nonhisp
+#   n_population = total population in that zipcode
+#   pct_minority = percent minority
+#   zcta = the zip code tabulate area != zip code!
+#   shp = shapefile for that specific zipcode
+
+for zipcode in unique_zipcodes:
+    temp=df.loc[df["Zip Code"]==zipcode,:];
+    
+    df_zip.loc[zipcode,'n_pts']=len(temp)
+    df_zip.loc[zipcode,'n_white_nonhisp']=((temp.Race==0) & (temp.Hispanic==0)).sum()
+    df_zip.loc[zipcode,'n_other']=len(temp)-df_zip.loc[zipcode,'n_white_nonhisp']
+    
+# =============================================================================
+# Load data on different groups
+# =============================================================================
+# doing 1-[white nonhispanic] population to calculate minority pop
+# why?
+# 	I just computed one example for ZCTA 25311
+# 	    #tot = 10964
+# 	    #white = 8343, i.e. 76.1% or 23.9% non-white
+# 	    #black = 1664, #asian = 88, #hispanic=163
+# 	     (1664+88+163)/10964 = 17.5%
+# 	differential is 6%
+# 	since the white population has only one error margin, by minimizing the 
+#       number of calculations we do, we minimize error propagation
+
+# white non hispanic
+# subgroup=["DP05_0077E"]; 
+# dataname = 'wnh'
+# wnh_E=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+# Percent white non-hispanic
+subgroup=["DP05_0077PE"]; 
+dataname = 'wnh_PE'
+wnh_PE=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+# total population (in order to potentially reweigh the values above)
+subgroup=["DP05_0070E"]; 
+dataname = 'tot'
+tot=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+df_census=pd.concat([wnh_PE,tot],axis=1)
+
+df_census.loc[:,'minority']=100-df_census.wnh_PE
+
+# =============================================================================
+# Cross-walk between ZCTA and Zip Code
+# =============================================================================
+# reference is here: 
+#    https://udsmapper.org/zip-code-to-zcta-crosswalk/
+
+name_crosswalk='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/ZIPCodetoZCTACrosswalk2021UDS.xlsx'
+
+df_cw=pd.read_excel(name_crosswalk);
+
+# zcta_list=df_census.index.astype(int).to_list()# get all zipcodes as int
+# zip_list=[None]*len(zcta_list);# create mpty list
+
+# leng=0
+# for i,zcta in enumerate(zcta_list):
+    # zip_list[i]=df_cw.loc[df_cw.ZCTA==int(zcta),'ZIP_CODE'].values
+    # if len(df_cw.loc[df_cw.ZCTA==int(zcta),'ZIP_CODE'].values)>1:
+        # fdsa
+    # need to use a list becasue some ZCTA have multiple Zip Codes
+
+# =============================================================================
+# collate into one larger dataframe
+# =============================================================================
+
+for zipcode in df_zip.index:
+    df_zip.loc[zipcode,'zcta']=int(df_cw.loc[df_cw.ZIP_CODE==zipcode,'ZCTA'].values[0])
+    # print(len(df_cw.loc[df_cw.ZIP_CODE==zipcode,'ZCTA']))
+    zcta_temp="{0:0=5d}".format((df_zip.loc[zipcode,'zcta']))
+    df_zip.loc[zipcode,'n_population']=df_census.loc[zcta_temp,'tot']
+    df_zip.loc[zipcode,'pct_minority']=df_census.loc[zcta_temp,'minority']
+
+# note that there are some instances where one zcta == 2 zip codes
+# this is in instances only where there are large suppliers or clients
+
+# get rid of rows with zero population (Naples Florida, 34101, is 0 people)
+df_zip=df_zip.loc[df_zip.n_population>0,:]
+
+# =============================================================================
+# compute lat long and distance from Duke
+# =============================================================================
+
+df_zip["Latitude"]=np.nan
+df_zip["Longitude"]=np.nan
+df_zip["Distance"]=np.nan
+###
+nomi = pgeocode.Nominatim('US')
+
+dukedata=nomi.query_postal_code("27710")
+lat_duke=dukedata.latitude
+lon_duke=dukedata.longitude
+
+Lat2=lat_duke*np.pi/180
+Long2=lon_duke*np.pi/180
+
+#constant
+R=6371e3;#metres
+
+for i in df_zip.index:
+    temp=nomi.query_postal_code(str(i))
+    df_zip.loc[i,"Latitude"]=temp.latitude
+    df_zip.loc[i,"Longitude"]=temp.longitude
+    
+    # Calculate distance using lat/lon:
+        # https://keisan.casio.com/exec/system/1224587128
+        # https://www.movable-type.co.uk/scripts/latlong.html
+    Lat1=temp.latitude*np.pi/180
+    Long1=temp.longitude*np.pi/180
+    
+    dLat=Lat1-Lat2
+    dLong=Long1-Long2
+    
+    if np.abs(dLat)>0:
+        a=np.sin(dLat/2)**2 + np.cos(Lat1) * np.cos(Lat2) * np.sin(dLong/2)**2
+        c = 2*np.arctan2(np.sqrt(a),np.sqrt(1-a))
+        dist=R*c
+        df_zip.loc[i,'Distance']=dist/1000*0.621371
+    else:
+        df_zip.loc[i,'Distance']=np.nan 
+
+
+
+# =============================================================================
+# Plot
+# =============================================================================
+
+
+#plot
+fig,ax=plt.subplots()
+x=df_zip.pct_minority.astype(float)
+y=(df_zip.n_pts/df_zip.n_population*100000).astype(float);# per 100k
+s=df_zip.n_population.astype(float);
+d=df_zip.Distance.astype(float);
+
+cm = plt.cm.get_cmap('magma')
+sc=ax.scatter(x=x,y=y,c=d,cmap=cm)
+# ax.plot(x,y,'or')
+
+lm = pg.linear_regression(x, y)
+lm2 = pg.linear_regression(x, y, weights=df_zip.n_population.astype(float))
+
+# df_zip.loc[:,'x']=x#.astype(float)
+# df_zip.loc[:,'y']=y#.astype(float)
+
+
+# sns.lmplot(data=df_zip,x='x',y='y',hue='n_population',)
+ax.set_xlabel('% Population Non-White and/or Hispanic')
+ax.set_ylabel('LITT Patients/100K')
+plt.colorbar(sc,)
+
+# also potentially plot with the color coinciding to distance from Duke?
+
+
+sys.exit()
+# #total population
+# subgroup=["DP05_0070E"]; 
+# dataname = 'tot'
+# tot=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+# #non-hispanic black
+# subgroup=["DP05_0078E"]; 
+# dataname = 'blk'
+# blk=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+# #non-hispanic asian
+# subgroup=["DP05_0080E"]; 
+# dataname = 'asi'
+# asi=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+# #allhispanic
+# subgroup=["DP05_0071E"]; 
+# dataname = 'his'
+# his=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+
+
+# DP05_0077E
+#(DP05_0078E (non-hispanic black/aa alone) 
+#+DP05_0080E (non-hispanic asian) 
+#+ DP05_0071E (Hispanic or Latino of any race))/DP05_0070E (total popluation)
+
+sys.exit()
+# =============================================================================
+# Load data on total population
+# =============================================================================
+# maingroup="B01003" # looks at all races
+# censusdata.printtable(censusdata.censustable('acs5', 2019, maingroup))
+
+subgroup=["B01003_001E"]
+dataname = 'total'
+total=pullacs5DP(subgroup=subgroup,year=2019,dataname=dataname)
+
+
+censusdata.printtable(censusdata.censustable('acs5', 2019, 'DP05'))
+
+subgroup=["DP05_0077E"]; #white non hispanic
+
+
+
+data_raw = censusdata.download('acs5', 
+                               2019, 
+                               censusdata.censusgeo([('zip code tabulation area', '*')]),
+                                   subgroup,tabletype='profile')
+
+
+
+# B98012 - 
+
+
+sys.exit()
+# =============================================================================
+# Identify zipcodes
+# =============================================================================
 df["Latitude"]=np.nan
 df["Longitude"]=np.nan
 
