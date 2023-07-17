@@ -471,6 +471,12 @@ df_dist["NHW"]=(df_dist['Race']==0) & (df_dist['Hispanic']==0)
 
 sns.stripplot(data=df_dist,x='NHW',y='Distance')
 
+sns.kdeplot(data=df_dist,x='Distance',hue='NHW')
+
+# https://pingouin-stats.org/build/html/generated/pingouin.mwu.htmlstats=pg.mwu(x=df_dist.loc[df_dist.NHW,'Distance'].values,
+             y=df_dist.loc[df_dist.NHW==False,'Distance'].values,
+             alternative='greater')
+
 ###############################################################################
 ###############################################################################
 ###############################################################################
