@@ -399,8 +399,10 @@ colors = xycmap.bivariate_color(sx=df_zip['xval'],
 sc=ax.scatter(x=df_zip.Longitude,y=df_zip.Latitude,c=colors,cmap=cmap,s=40,alpha=0.8,edgecolor='k',linewidth=0.5)
 
 ax.plot(lon_duke,lat_duke,'xb',markersize=10,linewidth=8);
+## for bigger map
 # ax.set_xlim(-97,-72);
 # ax.set_ylim(24,43);
+## for focused
 ax.set_xlim(-86,-72);
 ax.set_ylim(30,40);
 
