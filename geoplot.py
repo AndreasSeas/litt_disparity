@@ -85,7 +85,7 @@ def pullacs5DP(subgroup,year,dataname):
 # Load patient zipcode data
 # =============================================================================
 
-name_littzipcodes='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/LITT_Zip_Code_Data.csv'
+name_littzipcodes='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/Working/W-Manuscript-LITTDisparity/LITT_Zip_Code_Data.csv'
 
 df=pd.read_csv(name_littzipcodes)
 
@@ -158,7 +158,7 @@ df_census.loc[:,'minority']=100-df_census.wnh_PE
 # reference is here: 
 #    https://udsmapper.org/zip-code-to-zcta-crosswalk/
 
-name_crosswalk='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/ZIPCodetoZCTACrosswalk2021UDS.xlsx'
+name_crosswalk='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/Working/W-Manuscript-LITTDisparity/ZIPCodetoZCTACrosswalk2021UDS.xlsx'
 
 df_cw=pd.read_excel(name_crosswalk);
 
@@ -236,7 +236,7 @@ for i in df_zip.index:
 # =============================================================================
 # source is here
 # https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.2019.html#list-tab-1883739534
-name_shape='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/cb_2019_us_zcta510_500k/cb_2019_us_zcta510_500k.shp'
+name_shape='/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/Working/W-Manuscript-LITTDisparity/cb_2019_us_zcta510_500k/cb_2019_us_zcta510_500k.shp'
 df_shp=(gpd.read_file(name_shape)
             .rename(columns={'ZCTA5CE10':'zipcode','geometry':'zcta_polygon'}))[['zipcode','zcta_polygon']].set_index('zipcode')
 
@@ -399,8 +399,11 @@ colors = xycmap.bivariate_color(sx=df_zip['xval'],
 sc=ax.scatter(x=df_zip.Longitude,y=df_zip.Latitude,c=colors,cmap=cmap,s=40,alpha=0.8,edgecolor='k',linewidth=0.5)
 
 ax.plot(lon_duke,lat_duke,'xb',markersize=10,linewidth=8);
+# ax.set_xlim(-97,-72);
+# ax.set_ylim(24,43);
 ax.set_xlim(-86,-72);
 ax.set_ylim(30,40);
+
 ax.axis('off')
 
 ax=ax_set[1]
@@ -442,7 +445,7 @@ cax.set_xticks(cax.get_xlim())
 cax.set_yticks(cax.get_ylim())
 
 savefig=True
-os.chdir('/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/W-Manuscript-LITTDisparity/figures/')
+os.chdir('/Users/as822/Library/CloudStorage/Box-Box/McIntyreLab_Andreas/Writing/Working/W-Manuscript-LITTDisparity/figures/')
 if savefig: 
     fig.savefig('finalfigure.png',dpi=600);
     fig.savefig('finalfigure.svg');
@@ -451,7 +454,7 @@ if savefig:
     lm.to_csv('linear_unweighted.csv')
     lm2.to_csv('linear_weighted.csv')
 os.chdir(homedir)
-
+sys.exit()
 # =============================================================================
 # binarized thing
 # =============================================================================
@@ -473,9 +476,8 @@ sns.stripplot(data=df_dist,x='NHW',y='Distance')
 
 sns.kdeplot(data=df_dist,x='Distance',hue='NHW')
 
-# https://pingouin-stats.org/build/html/generated/pingouin.mwu.htmlstats=pg.mwu(x=df_dist.loc[df_dist.NHW,'Distance'].values,
-             y=df_dist.loc[df_dist.NHW==False,'Distance'].values,
-             alternative='greater')
+# https://pingouin-stats.org/build/html/generated/pingouin.mwu.html
+stats=pg.mwu(x=df_dist.loc[df_dist.NHW,'Distance'].values,y=df_dist.loc[df_dist.NHW==False,'Distance'].values,alternative='greater')
 
 ###############################################################################
 ###############################################################################
